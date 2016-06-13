@@ -264,12 +264,6 @@ VS_OUTPUT VS(float4 Pos : POSITION, float4 Normal : NORMAL, float2 Tex : TEXCOOR
 
 		float3 RefractVec = normalize(IncidentVecfromView * nnt - output.Normal * 1.0 * (ddn * nnt + sqrt(cos2t))); //-1~1
 
-		//ŠgŽU‹ßŽ—
-		float k1 = 0.05556; // 1/18
-		float k2 = 0.06250; // 1/16
-		float k3 = 0.04167; // 1/24
-		float k4 = 0.02083; // 1/48
-
 		float sum_weight = 0;
 
 		//“§‰ß‚·‚éŒõ	
