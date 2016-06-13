@@ -184,15 +184,12 @@ float4 PS_Fresnel(VS_OUT2 input) : SV_Target
 	float ddn = dot(IncidentVec, Normal);
 	float cos2t = 1.0f - nnt * nnt * (1.0f - ddn * ddn);
 
-	if (cos2t < 0.0) {
-
+	float3 RefractVec = Normal;
+	if (cos2t >= 0.0) {
+		RefractVec = normalize(IncidentVec* nnt - Normal * 1.0 * (ddn * nnt + sqrt(cos2t))); //-1~1
 	}
 
-	//float3 ReflactVec = normalize(1.0 / 1.33 * (IncidentVecfromView - (sqrt(n*n - (1 - cosA*cosA)) - cosA)* output.Normal)); //-1~1
-	float3 ReflactVec = normalize(IncidentVec* nnt - Normal * 1.0 * (ddn * nnt + sqrt(cos2t))); //-1~1
-
-
-	return float4((ReflactVec + 1) / 2.0, 1.0);	//0~1
+	return float4((RefractVec + 1) / 2.0, 1.0);	//0~1
 }
 
 //
@@ -226,6 +223,7 @@ VS_OUTPUT VS(float4 Pos : POSITION, float4 Normal : NORMAL, float2 Tex : TEXCOOR
 	VS_OUTPUT output = (VS_OUTPUT)0;
 
 	output.Pos = mul(Pos, g_mWVP);
+	output.transparent = float4(Pos.xyz, 1.0);
 	output.Normal = mul(Normal, (float3x3)g_mW);
 	float3 PosWorld = mul(Pos, g_mW);
 	output.EyeVector = g_vEye - PosWorld;
@@ -254,230 +252,71 @@ VS_OUTPUT VS(float4 Pos : POSITION, float4 Normal : NORMAL, float2 Tex : TEXCOOR
 
 	//描画点からのフレネル透過方向
 	float3 IncidentVecfromView = -normalize(output.EyeVector);
-	float n = 1.33;
-	float cosA = dot(output.Normal, -IncidentVecfromView);
-	//float cosB = 1.0/1.33 * sqrt(n*n - (1 - cosA*cosA));
-
 
 	float etaO = 1.0f;
 	float etaI = 1.333f;
 	float nnt = etaO / etaI;
 	float ddn = dot(IncidentVecfromView, output.Normal);
-	float cos2t  = 1.0f - nnt * nnt * (1.0f - ddn * ddn);
-
-	if (cos2t < 0.0) {
-		
-	}
-
-	//float3 ReflactVec = normalize(1.0 / 1.33 * (IncidentVecfromView - (sqrt(n*n - (1 - cosA*cosA)) - cosA)* output.Normal)); //-1~1
-	float3 ReflactVec = normalize(IncidentVecfromView * nnt - output.Normal * 1.0 * (ddn * nnt + sqrt(cos2t))); //-1~1
-
-	//return float4((ReflactVec + 1) / 2.0, 1.0);	//0~1
-
-	//拡散近似
-	float k1 = 0.05556; // 1/18
-	float k2 = 0.06250; // 1/16
-	float k3 = 0.04167; // 1/24
-	float k4 = 0.02083; // 1/48
+	float cos2t = 1.0f - nnt * nnt * (1.0f - ddn * ddn);
 
 	output.transparent = float4(0, 0, 0, 1);
+	if (cos2t >= 0.0) {
 
-	float sum_weight = 0;
+		float3 RefractVec = normalize(IncidentVecfromView * nnt - output.Normal * 1.0 * (ddn * nnt + sqrt(cos2t))); //-1~1
 
-	//透過する光	
-	for (int i = 0; i < 256; i++) {
+		//拡散近似
+		float k1 = 0.05556; // 1/18
+		float k2 = 0.06250; // 1/16
+		float k3 = 0.04167; // 1/24
+		float k4 = 0.02083; // 1/48
 
-		float2 random = texcoord.xy;//  +(g_random[i].xy + 1) * 0.5f;
-		
-		float LightIn = g_texDepth.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).r; //number
+		float sum_weight = 0;
 
-		float3 Ps = g_texPosition.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).xyz;
-		Ps = 2 * Ps - 1;
+		//透過する光	
+		for (int i = 0; i < 256; i++) {
 
-		float3 Ns = g_texNormal.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).xyz;
-		Ns = 2 * Ns -  1;
+			float2 random = texcoord.xy;//  +(g_random[i].xy + 1) * 0.5f;
 
-		float3 ds = g_texFresnel.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).xyz;
-		ds = 2 * ds - 1;
+			float LightIn = g_texDepth.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).r; //number
 
+			float3 Ps = g_texPosition.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).xyz;
+			Ps = 2 * Ps - 1;
 
-		if (LightIn != 0) {
-			//thickness
-			float thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
+			float3 Ns = g_texNormal.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).xyz;
+			Ns = 2 * Ns - 1;
 
-			//NaKaMi!!
-			float nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
+			float3 ds = g_texFresnel.SampleLevel(g_samPoint, float2(random + g_HalfDepthPixel), 0).xyz;
+			ds = 2 * ds - 1;
 
-			//nakami = 0;
-			thickness = thickness - nakami;
+			if (LightIn != 0) {
+				//thickness
+				float thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
 
-			//Irradiance
-			//float E = g_texIrradiance.SampleLevel(g_samLinear, float2(texcoord.xy + g_HalfDepthPixel), 0).r;
+				//NaKaMi!!
+				float nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
 
+				//nakami = 0;
+				thickness = thickness - nakami;
 
-			float A = max(0.0f, dot(ds, (PosWorld - Ps)));
-			float B = max(0.0f, dot(ReflactVec, (Ps - PosWorld)));
-			float C = pow(distance(PosWorld, Ps), 4.0f);
+				float A = max(0.0f, dot(ds, (PosWorld - Ps)));
+				float B = max(0.0f, dot(RefractVec, (Ps - PosWorld)));
+				float C = pow(distance(PosWorld, Ps), 4.0f);
+				float factor = 1.0f;
+				if (distance(PosWorld, Ps) < 0.05) {
+					factor = 0.0f;
+				}
 
-			float con = A * B / (C + 0.00001);
+				float con = factor * A * B / (C + 1.0e-6);
 
-			sum_weight += con;
+				sum_weight += con;
 
-			output.transparent += con * float4(exp(-(s * thickness + s2 * nakami) * g_Transparent), 1);
+				output.transparent += con * float4(exp(-(s * thickness + s2 * nakami) * g_Transparent), 1);
+			}
 		}
+
+		output.transparent /= (sum_weight + 1.0e-6);
+		output.transparent.w = 1;
 	}
-
-	output.transparent /= sum_weight;
-
-	//output.transparent = k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami) * g_Transparent), 1);
-	
-	////1.0
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, 0) * g_DepthPixel + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(0, -1) * g_DepthPixel + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, 0) * g_DepthPixel + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(0, 1) * g_DepthPixel + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	////2.0
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, 0) * g_DepthPixel * 2 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(0, -1) * g_DepthPixel * 2 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, 0) * g_DepthPixel * 2 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(0, 1) * g_DepthPixel * 2 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k1 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	////1.5
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, 1) * g_DepthPixel * 1.5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k2 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, -1) * g_DepthPixel * 1.5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k2 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, -1) * g_DepthPixel * 1.5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k2 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, 1) * g_DepthPixel * 1.5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k2 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	////4
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, 1) * g_DepthPixel * 4 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k3 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, -1) * g_DepthPixel * 4 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k3 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, -1) * g_DepthPixel * 4 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k3 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, 1) * g_DepthPixel * 4 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k3 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	////5
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(-1, 0) * g_DepthPixel * 5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k4 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(0, -1) * g_DepthPixel * 5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k4 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(1, 0) * g_DepthPixel * 5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k4 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	//LightIn = g_texDepth.SampleLevel(g_samPoint, float2(texcoord.xy + float2(0, 1) * g_DepthPixel * 5 + g_HalfDepthPixel), 0).r;
-	//thickness = g_texThickness.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	//nakami = g_texNaKaMi.SampleLevel(g_samPoint, float2(LightOut + g_HalfThicknessPixel, LightIn + g_HalfThicknessPixel), 0).r;
-	////nakami = 0;
-	//thickness = thickness - nakami;
-	//output.transparent += k4 *  g_Diffuse * float4(exp(-(s * thickness + s2 * nakami)* g_Transparent), 1);
-
-	output.transparent.w = 1;
-
 	return output;
 }
 
@@ -488,44 +327,38 @@ float4 PS(VS_OUTPUT input) : SV_Target
 {
 	float4 color = float4(0, 0, 0, 1);
 
-	float3 Normal = normalize(input.Normal);
+	float3 Normal      = normalize(input.Normal);
 	float3 LightVector = normalize(input.Light);
-	float3 EyeVector = normalize(input.EyeVector);
-	float NdotL = dot(Normal, LightVector);
+	float3 EyeVector   = normalize(input.EyeVector);
+	float3 HalfVector  = normalize(EyeVector + LightVector);
+	float  NdotL       = max(0.0, dot(Normal, LightVector));
+	float  NdotH       = max(0.0, dot(Normal, HalfVector));
 
 	//Fresnel Refraction(F)
-	float NdotL2 = max(0,dot(-Normal, LightVector));
-	float NdotL3 = max(0,dot(Normal, EyeVector));
-	float n = 1.33;//0.71428;
+	float etaO  = 1.0f;
+	float etaI  = 1.333f;
+	float nnt   = etaO / etaI;
+	float ddn   = dot(-EyeVector, Normal);
+	float cos2t = 1.0f - nnt * nnt * (1.0f - ddn * ddn);
 
-	//float cos = sqrt(1 - ((1 - pow(NdotL2, 2.0)) / pow(n, 2.0)));
-	//float B = sqrt(1 - pow(n, 2.0)*(1 - pow(dot(EyeVector, Normal), 2.0)));
-	float k = pow(1.0 - NdotL3, 5.0);
-	//float k = pow(1.0 - cos, 5.0);
-	float A = (1 - n) / (1 + n);
-	float F0 = pow(A, 2);
-	float Ft = (1.0 - F0)*k + F0;
-
-	//フォンシェーディング
-	/*float3 Reflect = normalize(2 * NdotL*Normal - LightVector);
-	float specular = pow(saturate(dot(Reflect, EyeVector)), 8);
-	float4 phong = g_Diffuse * saturate(NdotL) + 4 * specular*g_Specular;*/
-
-	color.xyz = (1.0 - Ft) * input.transparent.xyz * 1.0;
-
-	//color.xyz = input.transparent.xyz * 1.5;
-	
-	//color = 2*phong/4.0f+2*input.transparent*2.0f/4.0f;//フォンシェーディングの色に透過光をプラス
-
-	//ランバート
-	if (NdotL>0)
+	if (cos2t < 0.0) {
+		color = g_Diffuse * NdotL + g_Specular * pow(NdotH, 8.0);
+	}
+	else
 	{
-		float3 h = normalize(LightVector + EyeVector);
-		color += pow(max(dot(h, Normal), 0.0), 50);
+		float a = etaI - etaO;
+		float b = etaI + etaO;
+		float R0 = (a * a) / (b * b);
+		float c = 1.0 + ddn;
+		float Re = R0 + (1.0 - R0) * pow(c, 5.0);
+		float nnt2 = pow(etaO / etaI, 2.0);
+		float Tr = (1.0 - Re) * nnt2;
+
+		color.xyz = Re * g_Diffuse * NdotL; // + Tr * input.transparent.xyz;
+		color.xyz = input.transparent.xyz;
+		//color.xyz = 0.5 * g_Diffuse * NdotL + 0.5 * input.transparent.xyz;
 	}
 
-
-	return float4(color.xyz,1);
-
-	//return float4(0,0,Normal.z, 1.0); //確認用とかにどうぞ
+	//return float4(input.transparent.xyz, 1.0);
+	return float4(color.xyz, 1);
 }

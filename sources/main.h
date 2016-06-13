@@ -21,8 +21,8 @@
 #pragma warning(disable : 4305)
 
 //定数定義
-#define WINDOW_WIDTH 600 //ウィンドウ幅
-#define WINDOW_HEIGHT 600 //ウィンドウ高さ
+#define WINDOW_WIDTH 800 //ウィンドウ幅
+#define WINDOW_HEIGHT 800 //ウィンドウ高さ
 #define DEPTHTEX_WIDTH 512*2
 #define DEPTHTEX_HEIGHT 512*2
 #define APP_NAME "Window"
@@ -36,7 +36,7 @@
 
 //random 
 #define SAMPLENUM 256
-#define RADIUS 0.1f
+#define RADIUS 1.0f //0.1f
 
 //安全に開放するためのマクロ
 #define SAFE_RELEASE(x) if(x){x -> Release(); x = NULL;}	// ポインタ

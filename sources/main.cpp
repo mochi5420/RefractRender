@@ -665,7 +665,7 @@ HRESULT MAIN::InitD3D()
 	//generate randam sample point
 	srand((unsigned long)time(0));
 	for (int i = 0; i < SAMPLENUM; ++i) {
-		float r = RADIUS * (float)rand() / (float)RAND_MAX;
+		float r = RADIUS *(float)rand() / (float)RAND_MAX;
 		float t = 6.2831853f * (float)rand() / ((float)RAND_MAX);
 		float ct = cos(t), st = sin(t);
 		random[i][0] = r * ct;
@@ -1407,8 +1407,8 @@ void MAIN::Render()
 	//DrawTexture(m_pDepthTextureView);
 	//DrawTexture(m_pIrradianceTextureView);
 	//DrawTexture(m_pNormalTextureView);
-	DrawTexture(m_pFresnelTextureView);
-	//DrawTexture(m_pPositionTextureView);
+	//DrawTexture(m_pFresnelTextureView);
+	DrawTexture(m_pPositionTextureView);
 
 	//
 	DrawLight(m_pLightTexture);
